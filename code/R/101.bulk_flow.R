@@ -221,9 +221,175 @@ run_enrich <- function(DEG_res) {
     EA_trp <- kk_down %>% filter(grepl(".*ryptophan.*", Description))
     # trp_heatmap <- heatplot(EA_trp, foldChange = kk_gse@geneList[kk_gse@geneList < 0])
     # ggsave("result/103.enrich/trp_heatmap.png", trp_heatmap, height = 3)
+    # select try_pathway$plot.data.gene %>% as_tibble() %>% select(mol.data no NA)
     ansEA <- list(
         kk_up = kk_up,
         kk_down = kk_down,
-        kk_gse = kk_gse
+        kk_gse = kk_gse,
+        trp_pathway = trp_pathway
     )
+}
+
+run_WGCNA <- function(data_filt) {
+    # mdata <- data_filt %>%
+    #     as.data.frame() %>%
+    #     pivot_longer(cols = everything(), names_to = "sample", values_to = "value") %>%
+    #     mutate(group = ifelse(as.numeric(substr(sample, 14, 15)) < 10, "tumor", "normal"))
+    input_mat <- data_filt %>%
+        as.data.frame() %>%
+        t()
+    allowWGCNAThreads()
+    powers <- c(c(1:10), seq(from = 12, to = 20, by = 2))
+    sft <- pickSoftThreshold(
+        input_mat,
+        # blockSize = 30,
+        powerVector = powers,
+        verbose = 5
+    )
+    pdf("data/104.WGCNA/soft_threshold.pdf")
+    par(mfrow = c(1, 2))
+    cex1 <- 0.9
+
+    plot(sft$fitIndices[, 1],
+        -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+        xlab = "Soft Threshold (power)",
+        ylab = "Scale Free Topology Model Fit, signed R^2",
+        main = paste("Scale independence")
+    )
+    text(sft$fitIndices[, 1],
+        -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2],
+        labels = powers, cex = cex1, col = "red"
+    )
+    abline(h = 0.90, col = "red")
+    plot(sft$fitIndices[, 1],
+        sft$fitIndices[, 5],
+        xlab = "Soft Threshold (power)",
+        ylab = "Mean Connectivity",
+        type = "n",
+        main = paste("Mean connectivity")
+    )
+    text(sft$fitIndices[, 1],
+        sft$fitIndices[, 5],
+        labels = powers,
+        cex = cex1, col = "red"
+    )
+    dev.off()
+
+    picked_power <- 9
+    temp_cor <- cor
+    cor <- WGCNA::cor # Force it to use WGCNA cor function (fix a namespace conflict issue)
+    netwk <- blockwiseModules(input_mat, # <= input here
+
+        # == Adjacency Function ==
+        power = picked_power, # <= power here
+        networkType = "signed",
+
+        # == Tree and Block Options ==
+        deepSplit = 2,
+        pamRespectsDendro = F,
+        # detectCutHeight = 0.75,
+        minModuleSize = 30,
+        maxBlockSize = 4000,
+
+        # == Module Adjustments ==
+        reassignThreshold = 0,
+        mergeCutHeight = 0.25,
+
+        # == Output Options
+        numericLabels = T,
+        verbose = 3
+    )
+    # Convert labels to colors for plotting
+    mergedColors <- labels2colors(netwk$colors)
+    # Plot the dendrogram and the module colors underneath
+    pdf("data/104.WGCNA/dendrogram.pdf")
+    plotDendroAndColors(
+        netwk$dendrograms[[1]],
+        mergedColors[netwk$blockGenes[[1]]],
+        "Module colors",
+        dendroLabels = FALSE,
+        hang = 0.03,
+        addGuide = TRUE,
+        guideHang = 0.05
+    )
+    dev.off()
+    module_df <- data.frame(
+        gene_id = names(netwk$colors),
+        colors = labels2colors(netwk$colors)
+    )
+    write_delim(module_df, "data/104.WGCNA/module_colors.tsv", delim = "\t")
+    WGCNA_res <- list(
+        netwk = netwk,
+        module_df = module_df,
+        input_mat = input_mat
+    )
+}
+
+plot_WGCNA <- function(WGCNA_res, ansEA, data_filt, DEG_res) {
+    EA_genes <- ansEA$trp_pathway$plot.data.gene %>%
+        as_tibble() %>%
+        dplyr::filter(!is.na(mol.data)) %>%
+        pull(labels) %>%
+        unique()
+    # use bitr to convert SYMBOL to ensembl
+    EA_genes <- bitr(EA_genes, fromType = "SYMBOL", toType = "ENSEMBL", OrgDb = org.Hs.eg.db)
+    # filter rownames(data_filt) %in% EA_genes
+    data_EA <- data_filt[rownames(data_filt) %in% EA_genes$ENSEMBL, ] %>%
+        as.data.frame() %>%
+        rownames_to_column(var = "gene_id") %>%
+        as_tibble() %>%
+        pivot_longer(cols = starts_with("TCGA"), names_to = "sample", values_to = "value") %>%
+        mutate(group = ifelse(as.numeric(substr(sample, 14, 15)) < 10, "tumor", "normal")) %>%
+        left_join(., EA_genes, by = c("gene_id" = "ENSEMBL")) %>%
+        left_join(., DEG_res$DEGs, by = c("SYMBOL" = "gene_name"))
+    p <- grouped_ggbetweenstats(
+        data = data_EA,
+        x = group,
+        y = value,
+        grouping.var = SYMBOL,
+        # caption = "Trypthophan Pathway Genes Expression",
+        xlab = "Group",
+        ylab = "Expression",
+        bf.message = FALSE
+    )
+    ggsave("result/103.enrich/trp_pathway_expression.png", p, width = 18, height = 15)
+
+    netwk <- WGCNA_res$netwk
+    module_df <- WGCNA_res$module_df
+    input_mat <- WGCNA_res$input_mat
+    # Get Module Eigengenes per cluster
+    mergedColors <- labels2colors(netwk$colors)
+    MEs0 <- moduleEigengenes(input_mat, mergedColors)$eigengenes
+
+    # Reorder modules so similar modules are next to each other
+    MEs0 <- orderMEs(MEs0)
+    module_order <- names(MEs0) %>% gsub("ME", "", .)
+
+    # separate MEs0 by normal and tumor, into two dataframes
+    MEs0_normal <- MEs0[as.numeric(substr(rownames(MEs0), 14, 15)) >= 10, ]
+    MEs0_tumor <- MEs0[as.numeric(substr(rownames(MEs0), 14, 15)) < 10, ]
+    # hclust cols of MEs0_tumor, get the order
+    MEs0_tumor_order <- MEs0_tumor %>%
+        t() %>%
+        dist() %>%
+        hclust()
+    # use pheatmap to plot MEs0_tumor and MEs0_normal respectively
+    p1 <- pheatmap(MEs0_tumor %>% t(),
+        cluster_rows = MEs0_tumor_order, cluster_cols = TRUE, show_colnames = FALSE, silent = TRUE, legend = FALSE, border_color = NA,
+        show_rownames = FALSE, breaks = seq(-1, 1, by = 0.01), color = colorRampPalette(c("blue", "white", "red"))(200)
+    )
+    p2 <- pheatmap(MEs0_normal %>% t(),
+        cluster_rows = MEs0_tumor_order, cluster_cols = TRUE, show_colnames = FALSE, silent = TRUE, border_color = NA,
+        treeheight_row = 0, breaks = seq(-1, 1, by = 0.01), color = colorRampPalette(c("blue", "white", "red"))(200)
+    )
+    # use patchwork to combine p1 and p2
+    p <- wrap_plots(p1$gtable, p2$gtable)
+    ggsave("result/104.WGCNA/module_eigengenes.png", p)
+
+    write_tsv(
+        data_EA %>% dplyr::select(gene_id, SYMBOL, logFC, PValue, FDR) %>% distinct() %>%
+            left_join(., module_df, by = "gene_id"),
+        "result/103.enrich/trp_pathway_expression.tsv"
+    )
+    c("result/103.enrich/trp_pathway_expression.png", "result/104.WGCNA/module_eigengenes.png", "result/103.enrich/trp_pathway_expression.tsv")
 }

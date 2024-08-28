@@ -5,7 +5,7 @@ tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
-        "enrichplot", "DOSE"
+        "enrichplot", "DOSE", "WGCNA"
     ),
     controller = crew_controller_local(workers = 2, seconds_timeout = 36000),
     format = "qs",

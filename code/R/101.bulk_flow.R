@@ -122,7 +122,8 @@ run_DEG <- function(data_filt) {
         Cond1 = "Normal",
         Cond2 = "Tumor",
         method = "glmLRT",
-        pipeline = "edgeR"
+        pipeline = "edgeR",
+        batch.factors = "Plate"
     )
     DEGs <- DEGs %>% filter(FDR < 0.05 & abs(logFC) > 1)
     # save the DEGs table to data/102.DEG
@@ -161,9 +162,10 @@ run_enrich <- function(DEG_res) {
 
     kk_up <- enrichKEGG(
         gene = gene_list$up,
-        organism = "hsa", # 按需替换
-        # universe = gene_all,
-        qvalueCutoff = 0.05
+        organism = "hsa",
+        qvalueCutoff = 1,
+        # pvalueCutoff = 1,
+        universe = gene_all
     )
     # if category == "Metabolism" is not NULL, filter it
     # kk_up <- kk_up %>% filter(category == "Metabolism")
@@ -171,8 +173,10 @@ run_enrich <- function(DEG_res) {
     ggsave("result/103.enrich/KEGG_up.png", p)
     kk_down <- enrichKEGG(
         gene = gene_list$down,
-        organism = "hsa", # 按需替换
-        qvalueCutoff = 0.05
+        organism = "hsa",
+        qvalueCutoff = 1,
+        # pvalueCutoff = 1,
+        universe = gene_all
     )
     # kk_down <- kk_down %>% filter(category == "Metabolism")
     p <- dotplot(kk_down)
@@ -203,7 +207,6 @@ run_enrich <- function(DEG_res) {
         up = gene_gsea[gene_gsea > 0],
         down = gene_gsea[gene_gsea < 0]
     )
-    browser()
     kk_up <- setReadable(kk_up, org.Hs.eg.db, keyType = "ENTREZID")
     kk_down <- setReadable(kk_down, org.Hs.eg.db, keyType = "ENTREZID")
     kk_gse <- setReadable(kk_gse, org.Hs.eg.db, keyType = "ENTREZID")
@@ -216,8 +219,8 @@ run_enrich <- function(DEG_res) {
     metabolism_gsea <- gseaplot2(kk_gse, geneSetID = 19, title = kk_gse$Description[19])
     ggsave("result/103.enrich/metabolism_gsea.png", metabolism_gsea)
     EA_trp <- kk_down %>% filter(grepl(".*ryptophan.*", Description))
-    trp_heatmap <- heatplot(EA_trp, foldChange = kk_gse@geneList[kk_gse@geneList < 0])
-    ggsave("result/103.enrich/trp_heatmap.png", trp_heatmap, height = 3)
+    # trp_heatmap <- heatplot(EA_trp, foldChange = kk_gse@geneList[kk_gse@geneList < 0])
+    # ggsave("result/103.enrich/trp_heatmap.png", trp_heatmap, height = 3)
     ansEA <- list(
         kk_up = kk_up,
         kk_down = kk_down,

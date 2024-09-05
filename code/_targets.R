@@ -5,7 +5,8 @@ tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
-        "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork"
+        "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph", "limma", "tidybulk", "DESeq2", "tidygraph",
+        "ggraph"
     ),
     controller = crew_controller_local(workers = 2, seconds_timeout = 36000),
     format = "qs",
@@ -17,9 +18,11 @@ tar_config_set(
 )
 list(
     tar_target(data, download_data()),
-    tar_target(data_filt, preprocess_data(data)),
-    tar_target(DEG_res, run_DEG(data_filt)),
-    tar_target(ansEA, run_enrich(DEG_res), deployment = "main"),
+    tar_target(gtex_data_path, download_gtex()),
+    tar_target(data_filt, preprocess_data(data, gtex_data_path)),
+    tar_target(data_dds, run_DEG(data_filt)),
+    tar_target(ansEA, run_enrich(data_dds), deployment = "main"),
     tar_target(WGCNA_res, run_WGCNA(data_filt)),
-    tar_target(WGCNA_plots, plot_WGCNA(WGCNA_res, ansEA, data_filt, DEG_res))
+    tar_target(data_EA_tidy, plot_WGCNA(WGCNA_res, ansEA, data_filt, data_dds)),
+    tar_target(network_res, get_network(WGCNA_res, data_dds, data_EA_tidy))
 )

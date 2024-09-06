@@ -121,22 +121,6 @@ run_DEG <- function(data_filt) {
         "data/102.DEG/data_dds.tsv"
     )
     data_dds
-    # # make dds
-    # data_filt <- data_filt %>%
-    #     mutate(counts_round = round(counts_scaled_adjusted))
-    # assay(data_filt) <- assay(data_filt, "counts_round")
-    # dds <- DESeqDataSet(
-    #     data_filt,
-    #     design = ~group
-    # )
-    # res <- DESeq(dds) %>% results(contrast = c("group", "tumor", "normal"))
-    # res <- res %>%
-    #     as_tibble(rownames = "gene_name") %>%
-    #     filter(padj < 0.01 & abs(log2FoldChange) > 1)
-    # # save the DEGs table to data/102.DEG
-    # write_tsv(res, "data/102.DEG/DEGs.tsv")
-    # DEG_res <- res
-    # DEG_res
 }
 
 run_enrich <- function(data_dds) {
@@ -196,6 +180,14 @@ run_enrich <- function(data_dds) {
     write_tsv(kk_down %>% as.data.frame(), "data/103.enrich/KEGG_down.tsv")
     write_tsv(kk_gse %>% as.data.frame(), "data/103.enrich/KEGG_gse.tsv")
 
+    p <- plotEnrichAdv(
+        kk_up %>% as.data.frame() %>% filter(category == "Metabolism") %>% rename(FoldEnrich = FoldEnrichment),
+        kk_down %>% as.data.frame() %>% filter(category == "Metabolism") %>% rename(FoldEnrich = FoldEnrichment),
+        plot_type = "one",
+        term_metric = "FoldEnrich",
+        stats_metric = "p.adjust"
+    )
+    ggsave("result/103.enrich/metabolism_enrich.png", p, width = 10)
     trp_pathway <- pathview(
         gene.data = gene_gsea, same.layer = FALSE, limit = list(gene = 4, cpd = 1),
         pathway.id = "hsa00380", species = "hsa", kegg.dir = "result/103.enrich/"
@@ -591,4 +583,214 @@ get_correlation <- function(WGCNA_res, data_filt, data_EA_tidy) {
         rownames_to_column(var = "gene_id") %>%
         as_tibble() %>%
         pivot_longer(cols = starts_with("TCGA"), names_to = "sample", values_to = "value")
+}
+
+get_survival <- function(data, data_filt, data_EA_tidy) {
+    samplesTP <- TCGAquery_SampleTypes(
+        barcode = colnames(data),
+        typesample = c("TP")
+    )
+    get_res <- function(gene) {
+        data_clin <- data_filt %>%
+            as_tibble() %>%
+            filter(.feature %in% gene) %>%
+            filter(.sample %in% samplesTP) %>%
+            left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample")
+        gene_values <- data_clin %>%
+            pull(counts_scaled_adjusted)
+        data_clin_final <- data_clin %>%
+            dplyr::mutate(
+                survival_time = ifelse(vital_status == "Dead", days_to_death,
+                    days_to_last_follow_up
+                ) / 365.25,
+                vital_status = ifelse(vital_status == "Dead", 1, 0)
+            ) %>%
+            mutate(
+                gene_group = ifelse(counts_scaled_adjusted >= quantile(gene_values, 0.75), "High",
+                    ifelse(counts_scaled_adjusted <= quantile(gene_values, 0.25), "Low", NA)
+                )
+            ) %>%
+            dplyr::filter(!is.na(gene_group)) %>%
+            dplyr::select(.sample, survival_time, vital_status, gene_group)
+        fit <- survfit(Surv(survival_time, vital_status) ~ gene_group, data = data_clin_final)
+        p <- ggsurvplot(fit,
+            data = data_clin_final, risk.table = TRUE, pval = TRUE, conf.int = TRUE,
+            legend.title = paste0("Gene: ", gene),
+            legend.labs = c("Low", "High")
+        )$plot
+        ggsave(paste0("result/106.survival/survival_", gene, ".png"), p)
+    }
+    walk(data_EA_tidy$.feature, get_res)
+    "result/106.survival"
+}
+
+get_module_trait <- function(WGCNA_res, data_filt, data, data_EA_tidy) {
+    netwk <- WGCNA_res$netwk
+    module_df <- WGCNA_res$module_df
+    input_mat <- WGCNA_res$input_mat
+    mergedColors <- labels2colors(netwk$colors)
+    MEs0 <- moduleEigengenes(input_mat, mergedColors)$eigengenes
+
+    # Reorder modules so similar modules are next to each other
+    MEs0 <- orderMEs(MEs0)
+    data_clin <- data_filt %>%
+        pivot_sample() %>%
+        left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample") %>%
+        dplyr::select(
+            .sample, longest_dimension, ajcc_pathologic_stage, ajcc_pathologic_t,
+            ajcc_pathologic_n, ajcc_pathologic_m, vital_status, days_to_death, days_to_last_follow_up
+        ) %>%
+        mutate(
+            survival_time = ifelse(vital_status == "Dead", days_to_death,
+                days_to_last_follow_up
+            ) / 365.25,
+            vital_status = ifelse(vital_status == "Dead", 1, 0),
+            pathologic_stage = case_when(
+                grepl("Stage I", ajcc_pathologic_stage, ignore.case = TRUE) ~ 1,
+                grepl("Stage II", ajcc_pathologic_stage, ignore.case = TRUE) ~ 2,
+                grepl("Stage III", ajcc_pathologic_stage, ignore.case = TRUE) ~ 3,
+                grepl("Stage IV", ajcc_pathologic_stage, ignore.case = TRUE) ~ 4,
+                TRUE ~ 0
+            ),
+            pathologic_t = factor(ajcc_pathologic_t %>% replace_na("N")),
+            pathologic_n = factor(ajcc_pathologic_n %>% replace_na("N")),
+            pathologic_m = factor(ajcc_pathologic_m %>% replace_na("N"))
+        ) %>%
+        dplyr::select(.sample, survival_time, vital_status, pathologic_stage, pathologic_t, pathologic_n, pathologic_m)
+    # make rows of MEs0 order like data_clin$.sample order
+    MEs0 <- MEs0[match(data_clin$.sample, rownames(MEs0)), ]
+    # calculate correlation between MEs0 and pathologic_stage
+    cor_stage <- corr.test(MEs0, data_clin$pathologic_stage %>% as.numeric(), method = "spearman")
+    cor_t <- corr.test(MEs0, data_clin$pathologic_t %>% as.numeric(), method = "spearman")
+    cor_n <- corr.test(MEs0, data_clin$pathologic_n %>% as.numeric(), method = "spearman")
+    cor_m <- corr.test(MEs0, data_clin$pathologic_m %>% as.numeric(), method = "spearman")
+    cor_survival <- corr.test(MEs0, data_clin$survival_time, method = "spearman")
+    # combine the correlation results
+    cor_data <- list(
+        stage = cor_stage$r,
+        t = cor_t$r,
+        n = cor_n$r,
+        m = cor_m$r,
+        survival = cor_survival$r
+    ) %>%
+        purrr::reduce(cbind)
+    colnames(cor_data) <- c("stage", "t", "n", "m", "survival")
+    cor_data <- cor_data %>%
+        as_tibble(rownames = "module") %>%
+        pivot_longer(cols = -module, names_to = "trait", values_to = "correlation")
+    p_data <- list(
+        stage = cor_stage$p,
+        t = cor_t$p,
+        n = cor_n$p,
+        m = cor_m$p,
+        survival = cor_survival$p
+    ) %>%
+        purrr::reduce(cbind)
+    colnames(p_data) <- c("stage", "t", "n", "m", "survival")
+    p_data <- p_data %>%
+        as_tibble(rownames = "module") %>%
+        pivot_longer(cols = -module, names_to = "trait", values_to = "p_value")
+    # combine cor_data and p_data
+    cor_data <- cor_data %>%
+        left_join(., p_data, by = c("module", "trait")) %>%
+        # set correlation to NA if p_value > 0.05
+        mutate(correlation = ifelse(p_value > 0.05, NA, correlation))
+    p <- tidyheatmap(cor_data,
+        rows = module,
+        columns = trait,
+        values = correlation,
+        color_na = "grey",
+        scale = "none",
+        main = "Correlation between Module Eigengenes and Clinical Traits",
+        angle_col = "0",
+        silent = TRUE
+    )
+    ggsave("result/106.survival/module_trait_correlation.png", p)
+
+    data_clin <- data_filt %>%
+        dplyr::filter(.feature %in% data_EA_tidy$.feature) %>%
+        left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample") %>%
+        dplyr::select(
+            .sample, .feature, counts_scaled_adjusted, longest_dimension, ajcc_pathologic_stage, ajcc_pathologic_t,
+            ajcc_pathologic_n, ajcc_pathologic_m, vital_status, days_to_death, days_to_last_follow_up
+        ) %>%
+        mutate(
+            survival_time = ifelse(vital_status == "Dead", days_to_death,
+                days_to_last_follow_up
+            ) / 365.25,
+            vital_status = ifelse(vital_status == "Dead", 1, 0),
+            pathologic_stage = case_when(
+                grepl("Stage I", ajcc_pathologic_stage, ignore.case = TRUE) ~ 1,
+                grepl("Stage II", ajcc_pathologic_stage, ignore.case = TRUE) ~ 2,
+                grepl("Stage III", ajcc_pathologic_stage, ignore.case = TRUE) ~ 3,
+                grepl("Stage IV", ajcc_pathologic_stage, ignore.case = TRUE) ~ 4,
+                TRUE ~ 0
+            ),
+            pathologic_t = factor(ajcc_pathologic_t %>% replace_na("N")),
+            pathologic_n = factor(ajcc_pathologic_n %>% replace_na("N")),
+            pathologic_m = factor(ajcc_pathologic_m %>% replace_na("N"))
+        ) %>%
+        dplyr::select(.feature, counts_scaled_adjusted, survival_time, vital_status, pathologic_stage, pathologic_t, pathologic_n, pathologic_m)
+    get_cor_res <- function(gene) {
+        data_clin_final <- data_clin %>%
+            filter(.feature == gene)
+        get_res <- function(trait) {
+            res <- corr.test(data_clin_final$counts_scaled_adjusted, data_clin_final %>% pull(trait) %>% as.numeric(),
+                method = "spearman"
+            )
+            res
+        }
+        traits <- c("survival_time", "pathologic_stage", "pathologic_t", "pathologic_n", "pathologic_m")
+        cor_res <- map(traits, get_res)
+        cor_res_tidy <- cor_res %>%
+            map_dfr(~ tibble(correlation = .x$r, p_value = .x$p)) %>%
+            mutate(gene = gene, trait = traits)
+    }
+    cor_res <- map_dfr(data_EA_tidy$.feature, get_cor_res)
+    cor_res <- cor_res %>%
+        mutate(correlation = ifelse(p_value > 0.05, NA, correlation))
+    p <- tidyheatmap(cor_res,
+        rows = gene,
+        columns = trait,
+        values = correlation,
+        color_na = "grey",
+        scale = "none",
+        main = "Correlation between Gene Expression and Clinical Traits",
+        angle_col = "0",
+        silent = TRUE
+    )
+    ggsave("result/106.survival/gene_trait_correlation.png", p)
+
+    # # survival analysis for module
+    # data_clin <- data_clin %>%
+    #     left_join(., MEs0 %>% as_tibble() %>% rownames_to_column(".sample"), by = ".sample")
+    # fit <- survfit(Surv(survival_time, vital_status) ~ module, data = data_clin)
+    # p <- ggsurvplot(fit,
+    #     data = data_clin, risk.table = TRUE, pval = TRUE, conf.int = TRUE,
+    #     legend.title = "Module",
+    #     legend.labs = data_clin$module %>% unique()
+    # )$plot
+    # ggsave("result/106.survival/module_survival.png", p)
+    "result/106.survival"
+}
+
+deconv <- function(data_filt, data) {
+    data_cell <- data_filt %>%
+        deconvolve_cellularity(action = "get", cores = 30, prefix = "cibersort__") %>%
+        pivot_sample()
+    data_cell <- data_cell %>%
+        dplyr::select(.sample, starts_with("cibersort__"))
+    data_cell <- data_cell %>%
+        pivot_longer(
+            names_to = "Cell_type_inferred",
+            values_to = "proportion",
+            names_prefix = "cibersort__",
+            cols = contains("cibersort__")
+        )
+    p <- data_cell %>%
+        ggplot(aes(x = Cell_type_inferred, y = proportion)) +
+        geom_boxplot() +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), aspect.ratio = 1 / 5)
+    ggsave("result/107.deconv/cellularity.png", p)
+    data_filt %>% test_differential_cellularity(. ~ group )
 }

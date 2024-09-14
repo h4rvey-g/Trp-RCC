@@ -1,14 +1,17 @@
 library(targets)
 library(crew)
-source("code/R/101.bulk_flow.R")
+source("code/R/101.preprocess.R")
+source("code/R/102.DEG_and_enrich.R")
+source("code/R/103.network.R")
+source("code/R/104.survival.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
         "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph", "limma", "tidybulk", "DESeq2", "tidygraph",
-        "ggraph", "genekitr", "survival", "survminer", "psych","tidyheatmaps"
+        "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr"
     ),
-    controller = crew_controller_local(workers = 2, seconds_timeout = 36000),
+    controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
     format = "qs",
     storage = "worker", retrieval = "worker"
 )
@@ -26,5 +29,6 @@ list(
     tar_target(data_EA_tidy, plot_WGCNA(WGCNA_res, ansEA, data_filt, data_dds)),
     tar_target(network_res, get_network(WGCNA_res, data_dds, data_EA_tidy)),
     tar_target(surv_res, get_survival(data, data_filt, data_EA_tidy), format = "file"),
+    tar_target(cox_res, get_cox(data, data_filt, data_dds)),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file")
 )

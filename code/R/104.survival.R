@@ -96,8 +96,7 @@ get_lasso <- function(data, data_filt, data_dds) {
         typesample = c("TP")
     )
     gene <- data_dds %>%
-        pull(.feature) %>%
-        .[1]
+        pull(.feature)
     data_clin <- data_filt %>%
         as_tibble() %>%
         filter(.feature %in% gene) %>%
@@ -120,7 +119,12 @@ get_lasso <- function(data, data_filt, data_dds) {
     ) %>%
         as.matrix() %>%
         t()
-    y <- Surv(data_clin_final$survival_time, data_clin_final$vital_status)
+    y <- data_clin_final %>%
+        dplyr::select(-counts_scaled_adjusted) %>%
+        distinct() %>%
+        {
+            Surv(time = .$survival_time, event = .$vital_status)
+        }
     fit.cv <- cv.glmnet(
         x = x,
         y = y, family = "cox",
@@ -135,8 +139,8 @@ get_lasso <- function(data, data_filt, data_dds) {
     plot(fit)
     dev.off()
 
-    feature_all <- as_tibble(as.matrix(coef(fit, s = 0.05)), rownames = "feature") %>%
-        filter(`1` != 0) %>% 
+    feature_all <- as_tibble(as.matrix(coef(fit, s = fit.cv$lambda.min)), rownames = "feature") %>%
+        filter(`1` != 0) %>%
         arrange(desc(abs(`1`)))
 }
 

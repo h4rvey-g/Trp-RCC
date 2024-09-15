@@ -42,13 +42,15 @@ get_cox <- function(data, data_filt, data_dds) {
         barcode = colnames(data),
         typesample = c("TP")
     )
-    get_cox_res <- function(gene) {
-        library(tidySummarizedExperiment)
-        data_clin <- data_filt %>%
-            as_tibble() %>%
-            filter(.feature %in% gene) %>%
-            filter(.sample %in% samplesTP) %>%
-            left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample")
+    data_clin <- data_filt %>%
+        as_tibble() %>%
+        filter(.sample %in% samplesTP) %>%
+        left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample") %>%
+        dplyr::select(.sample, .feature, counts_scaled_adjusted, days_to_death, days_to_last_follow_up, vital_status)
+    get_cox_res <- function(gene, p) {
+        p()
+        data_clin <- data_clin %>%
+            filter(.feature %in% gene)
         data_clin_final <- data_clin %>%
             dplyr::mutate(
                 survival_time = ifelse(vital_status == "Dead", days_to_death,
@@ -71,18 +73,21 @@ get_cox <- function(data, data_filt, data_dds) {
         res
     }
     options(future.globals.maxSize = 9000 * 1024^2)
-    plan(multisession)
+    plan(multisession, workers = 30)
     dds_feature <- data_dds %>%
         pull(.feature) %>%
         unique()
-    cox_list <- future_map(dds_feature, get_cox_res)
+    with_progress({
+        p <- progressor(steps = length(dds_feature))
+        cox_list <- future_map(dds_feature, get_cox_res, p = p)
+    })
     # convert to tibble
     cox_res <- cox_list %>%
         purrr::reduce(rbind) %>%
         as_tibble() %>%
         mutate(gene = dds_feature) %>%
         filter(p.value < 0.05)
-   cox_res 
+    cox_res
 }
 
 get_lasso <- function(data, data_filt, data_dds) {
@@ -105,25 +110,34 @@ get_lasso <- function(data, data_filt, data_dds) {
             ) / 365.25,
             vital_status = ifelse(vital_status == "Dead", 1, 0)
         ) %>%
+        # remove survival time = 0
+        dplyr::filter(survival_time > 0) %>%
         dplyr::select(.sample, survival_time, vital_status, counts_scaled_adjusted)
-    x <- assay(data_dds, "counts_scaled_adjusted") %>% as.matrix()
-    y <- Surv(data_clin_final$survival_time, data_clin_final$vital_status) %>% as.matrix()
-    fit <- cv.glmnet(
+    x <- assay(
+        data_dds %>%
+            filter(.sample %in% data_clin_final$.sample),
+        "counts_scaled_adjusted"
+    ) %>%
+        as.matrix() %>%
+        t()
+    y <- Surv(data_clin_final$survival_time, data_clin_final$vital_status)
+    fit.cv <- cv.glmnet(
         x = x,
         y = y, family = "cox",
-        nlambda = 100
+        alpha = 1
     )
-    pdf("result/106.survival/lasso.pdf")
-    plot(fit, xvar = "lambda", label = TRUE)
-    dev.off()
-
-    fit.cv <- cv.glmnet(x, y, type.measure = "deviance", alpha = 1, family = "cox")
     pdf("result/106.survival/lasso_cv.pdf")
-    plot(fit.cv)
+    plot(fit.cv, xvar = "lambda", label = TRUE)
     dev.off()
 
-    feature_all <- as.data.frame(as.matrix(coef(fit.cv, s = "lambda.min")))
-    feature_s <- rownames(feature_all)[feature_all != 0]
+    fit <- glmnet(x, y, family = "cox", nlambda = 100)
+    pdf("result/106.survival/lasso.pdf")
+    plot(fit)
+    dev.off()
+
+    feature_all <- as_tibble(as.matrix(coef(fit, s = 0.05)), rownames = "feature") %>%
+        filter(`1` != 0) %>% 
+        arrange(desc(abs(`1`)))
 }
 
 

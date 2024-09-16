@@ -142,6 +142,17 @@ get_lasso <- function(data, data_filt, data_dds) {
     feature_all <- as_tibble(as.matrix(coef(fit, s = fit.cv$lambda.min)), rownames = "feature") %>%
         filter(`1` != 0) %>%
         arrange(desc(abs(`1`)))
+
+    p <- ggplot(
+        feature_all, aes(x = reorder(feature, `1`), y = `1`, fill = factor(sign(`1`)))
+    ) +
+        geom_col() +
+        coord_flip() +
+        scale_fill_manual(values = c("blue", "red")) +
+        labs(x = "Gene", y = "Log(Coefficients)") +
+        theme(legend.position = "none")
+    ggsave("result/106.survival/lasso.png", p)
+    feature_all
 }
 
 

@@ -4,6 +4,7 @@ source("code/R/101.preprocess.R")
 source("code/R/102.DEG_and_enrich.R")
 source("code/R/103.network.R")
 source("code/R/104.survival.R")
+source("code/R/105.risk_score_DEG.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -32,5 +33,7 @@ list(
     tar_target(cox_res, get_cox(data, data_filt, data_dds), deployment = "main"),
     tar_target(lasso_res, get_lasso(data, data_filt, data_dds)),
     tar_target(data_risk_score, get_risk_score(lasso_res, data_filt)),
+    tar_target(data_risk_dds, run_risk_DEG(data_filt, data_risk_score)),
+    tar_target(data_risk_EA, run_risk_enrich(data_risk_dds)),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file")
 )

@@ -34,7 +34,6 @@ get_survival <- function(data, data_filt, data_EA_tidy) {
         ggsave(paste0("result/106.survival/survival_", gene, ".png"), p)
     }
     walk(data_EA_tidy$.feature, get_res)
-    "result/106.survival"
 }
 
 get_cox <- function(data, data_filt, data_dds) {
@@ -136,23 +135,100 @@ get_lasso <- function(data, data_filt, data_dds) {
 
     fit <- glmnet(x, y, family = "cox", nlambda = 100)
     pdf("result/106.survival/lasso.pdf")
-    plot(fit)
+    plot(fit, xvar = "lambda", label = TRUE)
     dev.off()
 
     feature_all <- as_tibble(as.matrix(coef(fit, s = fit.cv$lambda.min)), rownames = "feature") %>%
         filter(`1` != 0) %>%
-        arrange(desc(abs(`1`)))
+        arrange(desc(abs(`1`))) %>%
+        dplyr::rename(coef = `1`)
 
     p <- ggplot(
-        feature_all, aes(x = reorder(feature, `1`), y = `1`, fill = factor(sign(`1`)))
+        feature_all, aes(x = reorder(feature, coef), y = coef, fill = factor(sign(coef)))
     ) +
         geom_col() +
         coord_flip() +
         scale_fill_manual(values = c("blue", "red")) +
-        labs(x = "Gene", y = "Log(Coefficients)") +
+        labs(x = "Gene", y = "Coefficients") +
         theme(legend.position = "none")
     ggsave("result/106.survival/lasso.png", p)
     feature_all
+}
+
+get_risk_score <- function(lasso_res, data_filt) {
+    gene <- lasso_res %>%
+        pull(feature)
+    data_gene <- data_filt %>%
+        as_tibble() %>%
+        filter(.feature %in% gene) %>%
+        dplyr::select(.sample, .feature, counts_scaled_adjusted)
+    # Merge data_risk_score and lasso_res by the gene feature
+    merged_data <- left_join(data_gene, lasso_res, by = c(".feature" = "feature"))
+
+    # Calculate the risk score for each row (counts_scaled_adjusted * coef)
+    merged_data$risk_contrib <- merged_data$counts_scaled_adjusted * merged_data$coef
+
+    # Summarize risk score for each sample
+    data_risk_score <- merged_data %>%
+        group_by(.sample) %>%
+        summarize(risk_score = sum(risk_contrib))
+}
+
+get_random_forest <- function(data, data_filt, data_dds) {
+    samplesTP <- TCGAquery_SampleTypes(
+        barcode = colnames(data),
+        typesample = c("TP")
+    )
+    gene <- data_dds %>%
+        pull(.feature)
+    data_clin <- data_filt %>%
+        as_tibble() %>%
+        filter(.feature %in% gene) %>%
+        filter(.sample %in% samplesTP) %>%
+        left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample")
+    data_clin_final <- data_clin %>%
+        dplyr::mutate(
+            survival_time = ifelse(vital_status == "Dead", days_to_death,
+                days_to_last_follow_up
+            ) / 365.25,
+            vital_status = ifelse(vital_status == "Dead", 1, 0)
+        ) %>%
+        # remove survival time = 0
+        dplyr::filter(survival_time > 0) %>%
+        dplyr::select(.sample, survival_time, vital_status, counts_scaled_adjusted)
+    x <- assay(
+        data_dds %>%
+            filter(.sample %in% data_clin_final$.sample),
+        "counts_scaled_adjusted"
+    ) %>%
+        as.matrix() %>%
+        t()
+    y <- data_clin_final %>%
+        dplyr::select(-counts_scaled_adjusted) %>%
+        distinct() %>%
+        {
+            Surv(time = .$survival_time, event = .$vital_status)
+        }
+    rf <- randomForestSRC::rfsrc(
+        x = x,
+        y = y,
+        ntree = 1000,
+        nodedepth = 5,
+        seed = 123
+    )
+    varimp <- rf$importance %>%
+        as_tibble() %>%
+        rownames_to_column("feature") %>%
+        arrange(desc(importance))
+    p <- ggplot(
+        varimp, aes(x = reorder(feature, importance), y = importance)
+    ) +
+        geom_col() +
+        coord_flip() +
+        labs(x = "Gene", y = "Importance") +
+        theme(legend.position = "none")
+    ggsave("result/106.survival/random_forest.png", p)
+    varimp
 }
 
 

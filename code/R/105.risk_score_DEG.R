@@ -2,20 +2,22 @@ run_risk_DEG <- function(data_filt, data_risk_score) {
     data_dds <- data_filt %>%
         left_join(data_risk_score, by = c(".sample" = ".sample")) %>%
         # add risk column, if risk_score is above median, set as high, otherwise low
-        mutate(risk = ifelse(risk_score > median(risk_score, na.rm = TRUE), "high", "low")) %>%
+        mutate(risk = ifelse(risk_score > median(risk_score, na.rm = TRUE), "high", "low"))
+    assay(data_dds, "counts_scaled_adjusted") <- round(assay(data_dds, "counts_scaled_adjusted"))
+    data_dds <- data_dds %>%
         test_differential_abundance(
             .formula = ~ 0 + risk,
             .abundance = counts_scaled_adjusted,
             scaling_method = "none",
-            contrasts = c("riskhigh - risklow"),
+            contrasts = list(c("risk", "high", "low")),
             action = "add",
-            method = "limma_voom"
+            method = "DESeq2"
         )
     data_dds <- data_dds %>%
         as_tibble() %>%
-        dplyr::mutate(log2FoldChange = `logFC___riskhigh - risklow`) %>%
-        dplyr::mutate(pvalue = `P.Value___riskhigh - risklow`) %>%
-        dplyr::mutate(padj = `adj.P.Val___riskhigh - risklow`) %>%
+        dplyr::mutate(log2FoldChange = `log2FoldChange___risk high-low`) %>%
+        dplyr::mutate(pvalue = `pvalue___risk high-low`) %>%
+        dplyr::mutate(padj = `padj___risk high-low`) %>%
         dplyr::select(.sample, .feature, counts_scaled_adjusted, risk, risk_score, log2FoldChange, pvalue, padj) %>%
         filter(padj < 0.05 & abs(log2FoldChange) > 1)
     write_tsv(

@@ -155,7 +155,7 @@ get_lasso <- function(data, data_filt, data_dds) {
     feature_all
 }
 
-get_risk_score <- function(lasso_res, data_filt) {
+get_risk_score <- function(lasso_res, data_filt, data) {
     gene <- lasso_res %>%
         pull(feature)
     data_gene <- data_filt %>%
@@ -167,11 +167,55 @@ get_risk_score <- function(lasso_res, data_filt) {
 
     # Calculate the risk score for each row (counts_scaled_adjusted * coef)
     merged_data$risk_contrib <- merged_data$counts_scaled_adjusted * merged_data$coef
+    # print the formula for risk score, coef is from lasso_res
+    cat("Risk score = ", paste0(round(lasso_res$coef, 4), "*", lasso_res$feature, " + "), "\n")
 
     # Summarize risk score for each sample
     data_risk_score <- merged_data %>%
         group_by(.sample) %>%
-        summarize(risk_score = sum(risk_contrib))
+        summarize(risk_score = sum(risk_contrib)) %>%
+        # Add a new column to data_risk_score to indicate the risk group, if risk_score is above median, set as high, otherwise low
+        mutate(risk = ifelse(risk_score > median(risk_score, na.rm = TRUE), "high", "low"))
+    risk_score_vs_group <- data_filt %>%
+        as_tibble() %>%
+        dplyr::select(.sample, group) %>%
+        distinct() %>%
+        left_join(., data_risk_score, by = ".sample")
+    # draw stacked barplot on group and risk, risk is the fill color
+    p <- risk_score_vs_group %>%
+        group_by(group, risk) %>%
+        summarize(counts = n()) %>%
+        ggplot(aes(x = group, y = counts, fill = risk)) +
+        geom_col(position = "stack") +
+        labs(x = "Group", y = "Counts", fill = "Risk") +
+        theme(legend.position = "top")
+    ggsave("result/106.survival/risk_score_vs_group.png", p)
+
+    # do survival analysis on risk score
+    samplesTP <- TCGAquery_SampleTypes(
+        barcode = colnames(data_filt),
+        typesample = c("TP")
+    )
+    data_clin_final <- data_filt %>%
+        as_tibble() %>%
+        filter(.sample %in% samplesTP) %>%
+        left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample") %>%
+        left_join(., data_risk_score, by = ".sample") %>%
+        dplyr::mutate(
+            survival_time = ifelse(vital_status == "Dead", days_to_death,
+                days_to_last_follow_up
+            ) / 365.25,
+            vital_status = ifelse(vital_status == "Dead", 1, 0)
+        ) %>%
+        dplyr::select(.sample, survival_time, vital_status, risk)
+    fit <- survfit(Surv(survival_time, vital_status) ~ risk, data = data_clin_final)
+    p <- ggsurvplot(fit,
+        data = data_clin_final, risk.table = TRUE, pval = TRUE, conf.int = TRUE,
+        legend.title = "Risk score",
+        legend.labs = c("Low", "High")
+    )$plot
+    ggsave("result/106.survival/risk_score_survival.png", p)
+    data_risk_score
 }
 
 get_random_forest <- function(data, data_filt, data_dds) {

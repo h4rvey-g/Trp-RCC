@@ -10,7 +10,7 @@ tar_option_set(
     packages <- c(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
         "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph", "limma", "tidybulk", "DESeq2", "tidygraph",
-        "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr", "progressr", "glmnet"
+        "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb"
     ),
     controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
     format = "qs",
@@ -34,6 +34,7 @@ list(
     tar_target(lasso_res, get_lasso(data, data_filt, data_dds)),
     tar_target(data_risk_score, get_risk_score(lasso_res, data_filt, data)),
     tar_target(data_risk_dds, run_risk_DEG(data_filt, data_risk_score)),
-    tar_target(data_risk_EA, run_risk_enrich(data_risk_dds)),
+    tar_target(msigdb, download_msigdb()),
+    tar_target(data_risk_EA, run_risk_enrich(data_risk_dds, msigdb)),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file")
 )

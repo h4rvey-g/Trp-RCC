@@ -19,6 +19,13 @@ download_gtex <- function() {
     )
     c("data/101.raw_data/gene_tpm_2017-06-05_v8_kidney_cortex.gct.gz", "data/101.raw_data/GTEx_Analysis_v8_Annotations_SubjectPhenotypesDS.txt")
 }
+download_msigdb <- function() {
+    msigdb <- read.gmt("data/101.raw_data/msigdb.v2024.1.Hs.entrez.gmt")
+    # filter "METABOLI*" in term
+    msigdb <- msigdb %>%
+        filter(grepl("METABOLI", term)) %>%
+        rename(gs_name = term, entrez_gene = gene)
+}
 
 preprocess_data <- function(data, gtex_data_path) {
     gtex_data <- read_tsv(gtex_data_path[1], skip = 2) %>%

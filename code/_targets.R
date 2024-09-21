@@ -22,6 +22,7 @@ tar_config_set(
 )
 list(
     tar_target(data, download_data()),
+    tar_target(msigdb, download_msigdb()),
     tar_target(gtex_data_path, download_gtex()),
     tar_target(data_filt, preprocess_data(data, gtex_data_path)),
     tar_target(data_dds, run_DEG(data_filt)),
@@ -34,7 +35,8 @@ list(
     tar_target(lasso_res, get_lasso(data, data_filt, data_dds)),
     tar_target(data_risk_score, get_risk_score(lasso_res, data_filt, data)),
     tar_target(data_risk_dds, run_risk_DEG(data_filt, data_risk_score)),
-    tar_target(msigdb, download_msigdb()),
     tar_target(data_risk_EA, run_risk_enrich(data_risk_dds, msigdb)),
+    tar_target(data_risk_dds_tumor, run_risk_DEG_tumor(data_filt, data_risk_score)),
+    tar_target(data_risk_EA_tumor, run_risk_enrich_tumor(data_risk_dds_tumor, msigdb)),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file")
 )

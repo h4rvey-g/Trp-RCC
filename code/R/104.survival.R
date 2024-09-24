@@ -274,25 +274,3 @@ get_random_forest <- function(data, data_filt, data_dds) {
     ggsave("result/106.survival/random_forest.png", p)
     varimp
 }
-
-
-deconv <- function(data_filt, data) {
-    data_cell <- data_filt %>%
-        deconvolve_cellularity(action = "get", cores = 30, prefix = "cibersort__") %>%
-        pivot_sample()
-    data_cell <- data_cell %>%
-        dplyr::select(.sample, starts_with("cibersort__"))
-    data_cell <- data_cell %>%
-        pivot_longer(
-            names_to = "Cell_type_inferred",
-            values_to = "proportion",
-            names_prefix = "cibersort__",
-            cols = contains("cibersort__")
-        )
-    p <- data_cell %>%
-        ggplot(aes(x = Cell_type_inferred, y = proportion)) +
-        geom_boxplot() +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), aspect.ratio = 1 / 5)
-    ggsave("result/107.deconv/cellularity.png", p)
-    data_filt %>% test_differential_cellularity(. ~ group)
-}

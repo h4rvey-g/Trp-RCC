@@ -5,12 +5,15 @@ source("code/R/102.DEG_and_enrich.R")
 source("code/R/103.network.R")
 source("code/R/104.survival.R")
 source("code/R/105.risk_score_DEG.R")
+source("code/R/106.clinical.R")
+source("code/R/107.deconv.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
         "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph", "limma", "tidybulk", "DESeq2", "tidygraph",
-        "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb"
+        "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot",
+        "correlationfunnel","corrr"
     ),
     controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
     format = "qs",
@@ -38,5 +41,7 @@ list(
     tar_target(data_risk_EA, run_risk_enrich(data_risk_dds, msigdb)),
     tar_target(data_risk_dds_tumor, run_risk_DEG_tumor(data_filt, data_risk_score)),
     tar_target(data_risk_EA_tumor, run_risk_enrich_tumor(data_risk_dds_tumor, msigdb)),
+    tar_target(data_clinical_risk, get_corr_clinical(data, data_risk_score)),
+    tar_target(deconv_res, deconv(data_filt, data, data_risk_score), format = "file"),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file")
 )

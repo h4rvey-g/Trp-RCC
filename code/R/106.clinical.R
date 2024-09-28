@@ -55,6 +55,6 @@ get_corr_clinical <- function(data, data_risk_score) {
         grouping.var = feature,
         type = "np"
     )
-    ggsave("result/108.clinical/clinical_test.png", p, width = 14, height = 14)
+    ggsave("result/108.clinical/clinical_test.png", p, width = 20, height = 20)
     data_clinical_risk <- data_clinical_long
 }

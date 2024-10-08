@@ -61,17 +61,28 @@ preprocess_data <- function(data, gtex_data_path) {
         assays = list(counts = assay(data_mRNA)),
         rowData = rowData(data_mRNA)
     )
-    gene_intersect <- intersect(rowData(data_mRNA)$gene_name, rownames(gtex_data))
-    gtex_data <- gtex_data %>%
-        filter(gene_name %in% gene_intersect)
-    data_mRNA <- data_mRNA %>% filter(gene_name %in% gene_intersect)
     data_mRNA <- data_mRNA %>%
         select(.feature, .sample, counts)
     gtex_data <- gtex_data %>%
         select(.feature, .sample, counts)
+    data_mRNA_rownames <- transId(rownames(assay(data_mRNA)), transTo = "symbol", unique = TRUE)
+    # filter rows in data_mRNA with rownames in data_mRNA_rownames$input_id, then replace rownames with data_mRNA_rownames$symbol
+    data_mRNA <- data_mRNA %>%
+        dplyr::filter(.feature %in% data_mRNA_rownames$input_id)
+    data_mRNA_assay <- assay(data_mRNA)
+    rownames(data_mRNA_assay) <- data_mRNA_rownames$symbol
+    gtex_rownames <- transId(rownames(assay(gtex_data)), transTo = "symbol", unique = TRUE)
+    gtex_data <- gtex_data %>%
+        dplyr::filter(.feature %in% gtex_rownames$input)
+    gtex_data_assay <- assay(gtex_data)
+    rownames(gtex_data_assay) <- gtex_rownames$symbol
+        gene_intersect <- intersect(rownames(data_mRNA_assay), rownames(gtex_data_assay))
+    data_mRNA_assay <- data_mRNA_assay[gene_intersect, ]
+    gtex_data_assay <- gtex_data_assay[gene_intersect, ]
     data_combined <- SummarizedExperiment::SummarizedExperiment(
-        assays = list(counts = cbind(assay(data_mRNA), assay(gtex_data)))
+        assays = list(counts = cbind(data_mRNA_assay, gtex_data_assay))
     )
+    browser()
     data_combined <- data_combined %>%
         mutate(
             group = ifelse(startsWith(.sample, "TCGA") & as.numeric(str_sub(.sample, 14, 15)) < 10, "tumor", "normal"),

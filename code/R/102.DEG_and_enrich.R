@@ -26,9 +26,10 @@ run_enrich <- function(data_dds) {
     data_dds <- data_dds %>%
         as_tibble() %>%
         select(-.sample, -counts_scaled_adjusted, -group)
-    entrez <- bitr(data_dds$.feature, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+    entrez <- transId(data_dds$.feature, transTo = "entrez")
     # inner join
-    data_dds <- inner_join(data_dds, entrez, by = c(".feature" = "SYMBOL"))
+    data_dds <- inner_join(data_dds, entrez, by = c(".feature" = "input_id")) %>%
+        dplyr::rename(ENTREZID = entrezid)
     gene_list <- list(
         up = data_dds$ENTREZID[data_dds$log2FoldChange > 0],
         down = data_dds$ENTREZID[data_dds$log2FoldChange < 0]

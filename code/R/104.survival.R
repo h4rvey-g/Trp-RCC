@@ -45,7 +45,10 @@ get_cox <- function(data, data_filt, data_dds) {
         as_tibble() %>%
         filter(.sample %in% samplesTP) %>%
         left_join(., colData(data) %>% as.data.frame() %>% rownames_to_column(".sample"), by = ".sample") %>%
-        dplyr::select(.sample, .feature, counts_scaled_adjusted, days_to_death, days_to_last_follow_up, vital_status)
+        dplyr::select(
+            .sample, .feature, counts_scaled_adjusted, days_to_death, days_to_last_follow_up,
+            vital_status, gender, age_at_index
+        )
     get_cox_res <- function(gene, p) {
         p()
         data_clin <- data_clin %>%
@@ -55,20 +58,18 @@ get_cox <- function(data, data_filt, data_dds) {
                 survival_time = ifelse(vital_status == "Dead", days_to_death,
                     days_to_last_follow_up
                 ) / 365.25,
-                vital_status = ifelse(vital_status == "Dead", 1, 0)
+                vital_status = ifelse(vital_status == "Dead", 1, 0),
+                gender = ifelse(gender == "male", 1, 0)
             ) %>%
-            dplyr::select(.sample, survival_time, vital_status, counts_scaled_adjusted)
-        formula <- as.formula(paste("Surv(survival_time, vital_status) ~", "counts_scaled_adjusted"))
+            dplyr::select(.sample, survival_time, vital_status, counts_scaled_adjusted, gender, age_at_index)
+        formula <- as.formula(paste("Surv(survival_time, vital_status) ~", "counts_scaled_adjusted + gender + age_at_index"))
         fit <- coxph(formula, data = data_clin_final)
         fit_summary <- summary(fit)
-        p.value <- signif(fit_summary$wald["pvalue"], digits = 2)
-        beta <- signif(fit_summary$coef[1], digits = 2)
-        HR <- signif(fit_summary$coef[2], digits = 2)
-        HR.confint.lower <- signif(fit_summary$conf.int[, "lower .95"], 2)
-        HR.confint.upper <- signif(fit_summary$conf.int[, "upper .95"], 2)
-        HR <- paste0(HR, " (", HR.confint.lower, "-", HR.confint.upper, ")")
+        p.value <- signif(fit_summary$coefficients["counts_scaled_adjusted", "Pr(>|z|)"], digits = 2)
+        beta <- signif(fit_summary$coefficients["counts_scaled_adjusted", "coef"], digits = 2)
+        HR <- signif(fit_summary$coefficients["counts_scaled_adjusted", "exp(coef)"], digits = 2)
         res <- c(beta, HR, p.value)
-        names(res) <- c("coef", "HR (95% CI for HR)", "p.value")
+        names(res) <- c("coef", "HR", "p.value")
         res
     }
     options(future.globals.maxSize = 9000 * 1024^2)
@@ -84,8 +85,11 @@ get_cox <- function(data, data_filt, data_dds) {
     cox_res <- cox_list %>%
         purrr::reduce(rbind) %>%
         as_tibble() %>%
-        mutate(gene = dds_feature) %>%
-        filter(p.value < 0.05)
+        mutate(
+            gene = dds_feature,
+            p.adjust = p.adjust(p.value, method = "BH")
+        ) %>%
+        filter(p.adjust < 0.05)
     cox_res
 }
 

@@ -38,7 +38,7 @@ list(
     tar_target(cox_res, get_cox(data, data_filt, data_dds), deployment = "main"),
     tar_target(uni_EA_res, uni_enrich(cox_res, data_dds, msigdb)),
     tar_target(uni_EA_plot, plot_uni_enrich(uni_EA_res, data_dds, cox_res)),
-    tar_target(uni_EA_intersect, select_intersect_genes(uni_EA_res)),
+    tar_target(uni_EA_intersect, select_intersect_genes(uni_EA_res, data_dds, cox_res)),
     tar_target(lasso_res, get_lasso(data, data_filt, data_dds)),
     tar_target(data_risk_score, get_risk_score(lasso_res, data_filt, data)),
     tar_target(data_risk_dds, run_risk_DEG(data_filt, data_risk_score)),

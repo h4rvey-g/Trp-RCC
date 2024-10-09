@@ -131,10 +131,16 @@ plot_uni_enrich <- function(uni_EA_res, data_dds, cox_res) {
     "result/108.direct_enrich"
 }
 
-select_intersect_genes <- function(uni_EA_res) {
+select_intersect_genes <- function(uni_EA_res, data_dds, cox_res) {
     gsea_up <- uni_EA_res$gsea_up$gsea_df
     gsea_down <- uni_EA_res$gsea_down$gsea_df
     gsea_all <- uni_EA_res$gsea_all$gsea_df
+    data_dds <- data_dds %>%
+        as_tibble() %>%
+        select(.feature, log2FoldChange, padj) %>%
+        distinct() %>%
+        inner_join(cox_res, by = c(".feature" = "gene")) %>%
+        select(.feature, log2FoldChange, coef)
 
     gsea_up <- gsea_up %>%
         mutate(gene_name = map(geneID, ~ {
@@ -163,9 +169,14 @@ select_intersect_genes <- function(uni_EA_res) {
         ) %>%
         filter(pathway_count > 1) %>%
         arrange(desc(pathway_count))
-    write_tsv(gsea_all_intersect %>%
-        unnest_wider(pathways, names_sep = "_") %>%
-        relocate(pathway_count, .after = gene_name), "result/108.direct_enrich/gene_pathway_count.tsv")
+    write_tsv(
+        gsea_all_intersect %>%
+            unnest_wider(pathways, names_sep = "_") %>%
+            relocate(pathway_count, .after = gene_name) %>%
+            left_join(data_dds, by = c("gene_name" = ".feature")) %>%
+            relocate(log2FoldChange, coef, .after = gene_name),
+        "result/108.direct_enrich/gene_pathway_count.tsv"
+    )
     genes_to_plot <- gsea_all_intersect %>%
         unnest_longer(pathways) %>%
         group_by(pathways) %>%

@@ -64,6 +64,12 @@ uni_enrich <- function(cox_res, data_dds, msigdb) {
     ggsave("result/108.direct_enrich/gsea_all_bar.png", p)
     write_tsv(gsea_all$gsea_df, "data/108.direct_enrich/gsea_all.tsv")
 
+    gene_up_combine <- gene_up_combine %>%
+        dplyr::select(gene = .feature, log2FoldChange, coef, HR, p.adjust)
+    gene_down_combine <- gene_down_combine %>%
+        dplyr::select(gene = .feature, log2FoldChange, coef, HR, p.adjust)
+    write_xlsx(bind_rows(gene_up_combine, gene_down_combine), "result/106.survival/cox_res_intersect_dds.xlsx")
+
     list(gsea_up = gsea_up, gsea_down = gsea_down, gsea_all = gsea_all)
 }
 

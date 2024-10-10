@@ -14,7 +14,7 @@ tar_option_set(
         "tidyverse", "TCGAbiolinks", "SummarizedExperiment", "tidySummarizedExperiment", "clusterProfiler", "org.Hs.eg.db", "pathview",
         "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph", "limma", "tidybulk", "DESeq2", "tidygraph",
         "ggraph", "genekitr", "survival", "survminer", "psych", "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot",
-        "correlationfunnel","corrr", "EnhancedVolcano", "ggupset"
+        "correlationfunnel","corrr", "EnhancedVolcano", "ggupset", "writexl"
     ),
     controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
     format = "qs",

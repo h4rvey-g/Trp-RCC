@@ -89,7 +89,10 @@ get_cox <- function(data, data_filt, data_dds) {
             gene = dds_feature,
             p.adjust = p.adjust(p.value, method = "BH")
         ) %>%
-        filter(p.adjust < 0.05)
+        filter(p.adjust < 0.05) %>%
+        relocate(gene) %>%
+        arrange(coef)
+    write_xlsx(cox_res, "result/106.survival/cox_res.xlsx")
     cox_res
 }
 

@@ -10,6 +10,7 @@ source("code/R/107.deconv.R")
 source("code/R/108.direct_enrich.R")
 source("code/R/201.load_sc.R")
 source("code/R/202.annotation.R")
+source("code/R/203.inferCNV.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -17,9 +18,9 @@ tar_option_set(
         "org.Hs.eg.db", "pathview", "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph",
         "limma", "tidybulk", "DESeq2", "tidygraph", "ggraph", "genekitr", "survival", "survminer", "psych",
         "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot", "correlationfunnel", "corrr",
-        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata"
+        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata", "SCEVAN", "future.mirai"
     ),
-    controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
+    controller = crew_controller_local(workers = 10, seconds_timeout = 60, local_log_directory = "data/_targets/logs"),
     format = "qs",
     storage = "worker", retrieval = "worker"
 )
@@ -54,10 +55,20 @@ list(
     # Single cell
     tar_target(h5ad_path, "data/101.raw_data/after_integration.h5ad", format = "file"),
     tar_target(h5seurat_path, "data/101.raw_data/sce_pca.h5seurat", format = "file"),
-    tar_target(sc_pre, load_sc_pre(h5seurat_path)), 
+    tar_target(sc_pre, load_sc_pre(h5seurat_path)),
     tar_target(latent, run_integration(), format = "file"),
     tar_target(sc, import_integration(latent, sc_pre)),
     tar_target(sc_pro, preprocess_sc(sc)),
+    tar_target(raw_list, prepare_infer_cnv(sc_pro)),
+    tar_target(name_matrix, names(raw_list) %>% as.list()),
+    tar_target(raw_matrix,
+        write.table(raw_list, paste0("data/203.inferCNV/raw_count_matrix/", name_matrix, ".tsv"),
+            sep = "\t", quote = FALSE, row.names = TRUE, col.names = TRUE
+        ),
+        pattern = map(raw_list, name_matrix)
+    ),
+    tar_target(cnv_results, infer_cnv()),
+    tar_target(sc_cnv, post_cnv(cnv_results, sc_pro)),
     tar_target(predicted_labels_path, run_annotation_train(), format = "file"),
-    tar_target(sc_anno, combine_annotation(sc, predicted_labels_path))
+    tar_target(sc_anno, combine_annotation(sc_cnv, predicted_labels_path))
 )

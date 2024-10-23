@@ -10,15 +10,15 @@ load_sc_pre <- function(h5seurat_path) {
       str_detect(dataset, "^GSM") ~ str_sub(dataset, 1, 7),
       TRUE ~ "unknown"
     ))
-  sc_pre <- RunUMAP(sc_pre, dims = 1:20, reduction = "pca", reduction.name = "umap_on_pca")
-  sc_anndata <- AnnData(
-    X = sc_pre[["RNA"]]$counts %>% t(),
-    obs = sc_pre[[]],
-    obsm = list(
-      pca = as.matrix(Embeddings(sc_pre, reduction = "pca"))
-    )
-  )
-  write_h5ad(sc_anndata, "data/201.load_sc/sc_pre.h5ad")
+  # sc_pre <- RunUMAP(sc_pre, dims = 1:20, reduction = "pca", reduction.name = "umap_on_pca")
+  # sc_anndata <- AnnData(
+  #   X = sc_pre[["RNA"]]$counts %>% t(),
+  #   obs = sc_pre[[]],
+  #   obsm = list(
+  #     pca = as.matrix(Embeddings(sc_pre, reduction = "pca"))
+  #   )
+  # )
+  # write_h5ad(sc_anndata, "data/201.load_sc/sc_pre.h5ad")
   sc_pre
 }
 

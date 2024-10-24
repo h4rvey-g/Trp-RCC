@@ -11,6 +11,7 @@ source("code/R/108.direct_enrich.R")
 source("code/R/201.load_sc.R")
 source("code/R/202.annotation.R")
 source("code/R/203.inferCNV.R")
+source("code/R/204.cluster.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -59,6 +60,7 @@ list(
     tar_target(latent, run_integration(), format = "file"),
     tar_target(sc, import_integration(latent, sc_pre)),
     tar_target(sc_pro, preprocess_sc(sc)),
+    ## InferCNV
     tar_target(raw_list, prepare_infer_cnv(sc_pro)),
     tar_target(name_matrix, names(raw_list) %>% as.list()),
     tar_target(raw_matrix,
@@ -69,6 +71,10 @@ list(
     ),
     tar_target(cnv_results, infer_cnv()),
     tar_target(sc_cnv, post_cnv(cnv_results, sc_pro)),
+    ## Annotation
     tar_target(predicted_labels_path, run_annotation_train(), format = "file"),
-    tar_target(sc_anno, combine_annotation(sc_cnv, predicted_labels_path))
+    tar_target(sc_anno, combine_annotation(sc_cnv, predicted_labels_path)),
+    tar_target(marker_dotplot, test_annotation(sc_anno), format = "file"),
+    ## Cluster
+    tar_target(sc_cluster, run_clusters(sc_anno), deployment = "main")
 )

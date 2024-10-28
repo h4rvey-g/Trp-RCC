@@ -10,6 +10,7 @@ source("code/R/107.deconv.R")
 source("code/R/108.direct_enrich.R")
 source("code/R/201.load_sc.R")
 source("code/R/202.annotation.R")
+source("code/R/204.cluster.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -17,9 +18,9 @@ tar_option_set(
         "org.Hs.eg.db", "pathview", "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph",
         "limma", "tidybulk", "DESeq2", "tidygraph", "ggraph", "genekitr", "survival", "survminer", "psych",
         "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot", "correlationfunnel", "corrr",
-        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata"
+        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata", "clustree"
     ),
-    controller = crew_controller_local(workers = 20, seconds_timeout = 36000),
+    controller = crew_controller_local(workers = 20, seconds_timeout = 6000),
     format = "qs",
     storage = "worker", retrieval = "worker"
 )
@@ -59,5 +60,9 @@ list(
     tar_target(sc, import_integration(latent, sc_pre)),
     tar_target(sc_pro, preprocess_sc(sc)),
     tar_target(predicted_labels_path, run_annotation_train(), format = "file"),
-    tar_target(sc_anno, combine_annotation(sc, predicted_labels_path))
+    tar_target(sc_anno, combine_annotation(sc, predicted_labels_path)),
+    tar_target(sc_cluster, run_clusters(sc_anno)),
+    tar_target(cluster_tree_path, cluster_tree(sc_cluster)),
+    tar_target(final_annotation, optimize_clusters(sc_cluster), format = "file"),
+    tar_target(sc_opt, get_final_annotation(sc_cluster, final_annotation))
 )

@@ -11,6 +11,7 @@ source("code/R/108.direct_enrich.R")
 source("code/R/201.load_sc.R")
 source("code/R/202.annotation.R")
 source("code/R/204.cluster.R")
+source("code/R/205.sub_cluster.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -18,7 +19,7 @@ tar_option_set(
         "org.Hs.eg.db", "pathview", "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph",
         "limma", "tidybulk", "DESeq2", "tidygraph", "ggraph", "genekitr", "survival", "survminer", "psych",
         "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot", "correlationfunnel", "corrr",
-        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata", "clustree"
+        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata", "clustree", "scGate"
     ),
     controller = crew_controller_local(workers = 20, seconds_timeout = 6000),
     format = "qs",
@@ -53,9 +54,9 @@ list(
     tar_target(deconv_res, deconv(data_filt, data, data_risk_score), format = "file"),
     tar_target(trait_res, get_module_trait(WGCNA_res, data_filt, data, data_EA_tidy), format = "file"),
     # Single cell
-    tar_target(h5ad_path, "data/101.raw_data/after_integration.h5ad", format = "file"),
-    tar_target(h5seurat_path, "data/101.raw_data/sce_pca.h5seurat", format = "file"),
-    tar_target(sc_pre, load_sc_pre(h5seurat_path)), 
+    tar_target(h5ad_path, "data/101.raw_data/after_integration.h5ad", format = "file", cue = tar_cue("never")),
+    tar_target(h5seurat_path, "data/101.raw_data/sce_pca.h5seurat", format = "file", cue = tar_cue("never")),
+    tar_target(sc_pre, load_sc_pre(h5seurat_path), cue = tar_cue("never")), 
     tar_target(latent, run_integration(), format = "file"),
     tar_target(sc, import_integration(latent, sc_pre)),
     tar_target(sc_pro, preprocess_sc(sc)),
@@ -64,5 +65,8 @@ list(
     tar_target(sc_cluster, run_clusters(sc_anno)),
     tar_target(cluster_tree_path, cluster_tree(sc_cluster)),
     tar_target(final_annotation, optimize_clusters(sc_cluster), format = "file"),
-    tar_target(sc_opt, get_final_annotation(sc_cluster, final_annotation))
+    tar_target(sc_opt, get_final_annotation(sc_cluster, final_annotation)),
+    tar_target(sub_res, c(0.01, 0.05, 0.08, 0.1, 0.2, 0.3, 0.4, 0.5)),
+    tar_target(T_sub_cluster, get_sub_cluster(sc_opt, sub_res), pattern = map(sub_res)),
+    tar_target(sc_T_cell, get_scGate_T(sc_opt))
 )

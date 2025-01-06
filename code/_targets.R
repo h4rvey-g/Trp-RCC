@@ -11,7 +11,9 @@ source("code/R/108.direct_enrich.R")
 source("code/R/201.load_sc.R")
 source("code/R/202.annotation.R")
 source("code/R/204.cluster.R")
-source("code/R/205.sub_cluster.R")
+source("code/R/205.sub_cluster_temp.R")
+source("code/R/206.Tex.R")
+source("code/R/301.key_gene_analy.R")
 tar_option_set(
     tidy_eval = FALSE,
     packages <- c(
@@ -19,10 +21,14 @@ tar_option_set(
         "org.Hs.eg.db", "pathview", "enrichplot", "DOSE", "WGCNA", "ggstatsplot", "pheatmap", "patchwork", "igraph",
         "limma", "tidybulk", "DESeq2", "tidygraph", "ggraph", "genekitr", "survival", "survminer", "psych",
         "tidyheatmaps", "furrr", "progressr", "glmnet", "msigdb", "ggstatsplot", "correlationfunnel", "corrr",
-        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "anndata", "clustree", "scGate"
+        "EnhancedVolcano", "ggupset", "writexl", "tidyseurat", "SeuratDisk", "Seurat", "SeuratExtend", "tidyplots",
+        # "omnideconv",
+        "reticulate"
     ),
     controller = crew_controller_local(workers = 20, seconds_timeout = 6000),
-    format = "qs",
+    format = "qs", resources = tar_resources(
+        qs = tar_resources_qs(nthreads = 8L)
+    ),
     storage = "worker", retrieval = "worker"
 )
 tar_config_set(
@@ -56,7 +62,7 @@ list(
     # Single cell
     tar_target(h5ad_path, "data/101.raw_data/after_integration.h5ad", format = "file", cue = tar_cue("never")),
     tar_target(h5seurat_path, "data/101.raw_data/sce_pca.h5seurat", format = "file", cue = tar_cue("never")),
-    tar_target(sc_pre, load_sc_pre(h5seurat_path), cue = tar_cue("never")), 
+    tar_target(sc_pre, load_sc_pre(h5seurat_path), cue = tar_cue("never")),
     tar_target(latent, run_integration(), format = "file"),
     tar_target(sc, import_integration(latent, sc_pre)),
     tar_target(sc_pro, preprocess_sc(sc)),
@@ -66,7 +72,28 @@ list(
     tar_target(cluster_tree_path, cluster_tree(sc_cluster)),
     tar_target(final_annotation, optimize_clusters(sc_cluster), format = "file"),
     tar_target(sc_opt, get_final_annotation(sc_cluster, final_annotation)),
-    tar_target(sub_res, c(0.01, 0.05, 0.08, 0.1, 0.2, 0.3, 0.4, 0.5)),
-    tar_target(T_sub_cluster, get_sub_cluster(sc_opt, sub_res), pattern = map(sub_res)),
-    tar_target(sc_T_cell, get_scGate_T(sc_opt))
+    # tar_target(sub_res, c(0.01, 0.05, 0.08, 0.1, 0.2, 0.3, 0.4, 0.5)),
+    # tar_target(T_sub_cluster, get_sub_cluster(sc_opt, sub_res), pattern = map(sub_res)),
+    tar_target(predicted_labels_T, "data/205.sub_cluster/predicted_labels_T.csv", format = "file"),
+    tar_target(sc_T_sub_cluster, get_sub_cluster(sc_opt)),
+    tar_target(sc_T_anno, anno_Tex(sc_T_sub_cluster, predicted_labels_T)),
+    tar_target(Tex_score, get_module_score_T(sc_T_anno)),
+    tar_target(Tex_marker, DEG_Tex(sc_T_anno, sc_opt, Tex_score)),
+    # key gene analysis
+    tar_target(kgenes, c("GBP5", "CD27", "ANXA7", "HAPLN3", "CHI3L2", "NCKAP5", "FIBCD1")),
+    tar_target(data_full, get_data_full(data, data_filt)),
+    tar_target(kg_DEG_single_plot, kg_DEG_single(data_full, data_dds, kgenes),
+        pattern = map(kgenes), iteration = "list", error = "null"
+    ),
+    tar_target(kg_survival_plot, kg_survival(data_full, kgenes),
+        pattern = map(kgenes), iteration = "list", error = "null"
+    ),
+    tar_target(kg_sc_path, kg_sc(sc_opt, kgenes), pattern = map(kgenes), iteration = "list", error = "null"),
+    tar_target(ref_deconv, schard::h5ad2seurat("data/201.load_sc/reference.h5ad")),
+    tar_target(kg_deconv_tumor_res, kg_deconv_tumor(data_full, ref_deconv)),
+    tar_target(kg_deconv_normal_res, kg_deconv_normal(data_full, ref_deconv)),
+    tar_target(deconv_res_list, plot_deconv(kg_deconv_tumor_res, kg_deconv_normal_res, data_full)),
+    tar_target(kg_deconv_gene_res, evaluate_gene_celltype_correlation(deconv_res_list, kgenes),
+        pattern = map(kgenes), iteration = "list", error = "null"
+    )
 )

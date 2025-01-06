@@ -185,8 +185,18 @@ get_final_annotation <- function(sc_cluster, final_annotation) {
         mutate(cell_type_opt = if_else(cell_type_opt %in% c("Epi_PT", "Epi_non-PT"), "Nephron", cell_type_opt)) %>%
         # convert Myeloid to Monocytic lineage
         mutate(cell_type_opt = if_else(cell_type_opt == "Myeloid", "Monocytic lineage", cell_type_opt))
+    # drop type == "normal" but cell_type_opt == "RCC"
+    sc_opt <- sc_opt %>%
+        filter(!(type == "normal" & cell_type_opt == "RCC"))
     # plot DimPlot with cell_type and cell_type_opt
     p <- DimPlot(sc_opt, group.by = c("cell_type", "cell_type_opt"), label = TRUE, reduction = "umap")
     ggsave("result/202.annotation/cluster_opt.png", p, width = 20, height = 10)
+    # save cell of cell_type_opt == "T-cell" to data/204.cluster/T_cell.tsv
+    sc_opt %>%
+        filter(cell_type_opt == "T-cell") %>%
+        as_tibble() %>%
+        mutate(cell_name = cell) %>%
+        select(cell_name) %>%
+        write_tsv("data/204.cluster/T_cell_names.tsv")
     sc_opt
 }

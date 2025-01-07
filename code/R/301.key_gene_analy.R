@@ -485,7 +485,7 @@ evaluate_gene_celltype_correlation <- function(deconv_res_list, kgene) {
             padj = p.adjust(pvalue, method = "BH"),
             significance = case_when(
                 padj < 0.001 ~ "***",
-                padj < 0.01 ~ "**", 
+                padj < 0.01 ~ "**",
                 padj < 0.05 ~ "*",
                 TRUE ~ ""
             )
@@ -501,11 +501,91 @@ evaluate_gene_celltype_correlation <- function(deconv_res_list, kgene) {
         theme(plot.background = element_rect(fill = "white")) +
         labs(
             title = paste0("Correlation between ", kgene, " expression and cell type proportions"),
-            x = "Cell Type", 
+            x = "Cell Type",
             y = "Spearman Correlation"
         )
 
     save_plot(p, filename = paste0("result/301.key_gene_analy/", kgene, "/celltype_correlation.png"))
 
+    # 添加分组分析
+    # Only analyze tumor samples
+    tumor_idx <- metadata$group == "tumor"
+    tumor_expr <- gene_expr[tumor_idx]
+    tumor_metadata <- metadata[tumor_idx, ]
+
+    quartile_analysis <- lapply(unique(cor_df$celltype), function(ct) {
+        # Get cell proportions for current cell type (tumor only)
+        cell_prop <- tumor_metadata[[paste0("celltype_", ct)]]
+
+        # Calculate quartiles
+        q25 <- quantile(cell_prop, 0.25)
+        q75 <- quantile(cell_prop, 0.75)
+
+        # Group samples
+        high_group <- cell_prop >= q75
+        low_group <- cell_prop <= q25
+
+        # Get gene expression for each group
+        expr_high <- tumor_expr[high_group]
+        expr_low <- tumor_expr[low_group]
+
+        # Wilcoxon test
+        test_result <- wilcox.test(expr_high, expr_low)
+
+        # Create plot data
+        plot_data <- data.frame(
+            expression = c(expr_high, expr_low),
+            group = factor(
+                c(
+                    rep("High", sum(high_group)),
+                    rep("Low", sum(low_group))
+                ),
+                levels = c("Low", "High")
+            ),
+            celltype = ct
+        )
+
+        list(
+            celltype = ct,
+            wilcox_pvalue = test_result$p.value,
+            fold_change = mean(expr_high) / mean(expr_low),
+            plot_data = plot_data
+        )
+    })
+
+    # 整合分析结果
+    quartile_df <- do.call(rbind, lapply(quartile_analysis, function(x) {
+        data.frame(
+            celltype = x$celltype,
+            wilcox_pvalue = x$wilcox_pvalue,
+            fold_change = x$fold_change
+        )
+    })) %>%
+        # drop celltype containing "Epi"
+        filter(!grepl("Epi", celltype)) %>%
+    mutate(
+        wilcox_pvalue_adj = p.adjust(wilcox_pvalue, method = "BH")
+    )
+
+    # Create dot plot
+    p_quartile <- ggplot(quartile_df, aes(x = log2(fold_change), y = -log10(wilcox_pvalue_adj))) +
+        geom_point(aes(color = case_when(
+            wilcox_pvalue_adj <= 0.05 & log2(fold_change) >= 1 ~ "Up",
+            wilcox_pvalue_adj <= 0.05 & log2(fold_change) <= -1 ~ "Down",
+            TRUE ~ "NS"
+        )), size = 3, show.legend = FALSE) +
+        scale_color_manual(values = c("Up" = "red", "Down" = "blue", "NS" = "grey")) +
+        ggrepel::geom_text_repel(aes(label = celltype)) +
+        geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "red") +
+        geom_vline(xintercept = c(-1, 1), linetype = "dotted", color = "red") +
+        theme_minimal() +
+        labs(
+            y = "-log10(adjusted p-value)", 
+            x = "log2(Fold Change)",
+            title = paste0(kgene, " expression in high vs low cell proportion groups")
+        ) +
+        theme(plot.background = element_rect(fill = "white"))
+
+    save_plot(p_quartile, filename = paste0("result/301.key_gene_analy/", kgene, "/celltype_compare_gene.png"))
     return(cor_df)
 }

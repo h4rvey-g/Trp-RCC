@@ -1,0 +1,2 @@
+
+ria2c -d data/201.load_sc/raw/liMappingSinglecellTranscriptomes2022 -o RCC_upload_final_raw_counts.h5ad -x 8 https://data.mendeley.com/public-files/datasets/g67bkbnhhg/files/0234c989-be98-401a-8384-2f5ea9f59534/file_downloaded

@@ -4,3 +4,5 @@ test
 logs
 .venv*
 .vscode
+context_portal
+.roo

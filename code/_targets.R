@@ -172,7 +172,11 @@ list(
         run_scvi_integration(
             python_script_path = python_integration_script,
             input_h5ad = sc_merged_h5ad,
-            output_h5ad = "data/202.annotation/integrated.h5ad"
+            output_h5ad = "data/202.annotation/integrated.h5ad",
+            host_project_root = "/data0/work/guozhonghao/Trp-RCC",
+            host_venv_name = ".venv_scvi_gpu",
+            host_user = "guozhonghao", # Your username on the host machine
+            host_address = "host.docker.internal" # Or your host's IP
         ),
         format = "file",
         deployment = "main" # Run on main process due to venv

@@ -33,10 +33,10 @@ deconv <- function(data_filt, data, data_risk_score) {
         rename_with(~ gsub("cibersort__", "", .x))
     cell_cor <- data_cell_prep %>%
         binarize(n_bins = 6, thresh_infreq = 0.01)
-    cell_cor_res <- cell_cor %>%
-        correlationfunnel::correlate(target = risk__1, method = "kendall")
-    p <- plot_correlation_funnel(cell_cor_res)
-    ggsave("result/107.deconv/cellularity_correlation_funnel.png", p, width = 10, height = 10)
+    # cell_cor_res <- cell_cor %>%
+    #     correlationfunnel::correlate(target = risk__1, method = "kendall")
+    # p <- plot_correlation_funnel(cell_cor_res)
+    # ggsave("result/107.deconv/cellularity_correlation_funnel.png", p, width = 10, height = 10)
     cor <- corrr::correlate(data_cell_prep, method = "kendall")
     p <- corrr::rplot(cor) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
     ggsave("result/107.deconv/cellularity_correlation.png", p, width = 14)

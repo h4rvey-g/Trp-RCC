@@ -21,10 +21,10 @@ get_corr_clinical <- function(data, data_risk_score) {
     max_risk_score <- colnames(data_clinical_bin) %>%
         str_subset("risk_score") %>%
         str_subset("_Inf") 
-    data_cor <- data_clinical_bin %>%
-        correlationfunnel::correlate(target = max_risk_score, method = "kendall")
-    p <- plot_correlation_funnel(data_cor)
-    ggsave("result/108.clinical/clinical_correlation_funnel.png", p)
+    # data_cor <- data_clinical_bin %>%
+    #     correlationfunnel::correlate(target = max_risk_score, method = "kendall")
+    # p <- plot_correlation_funnel(data_cor)
+    # ggsave("result/108.clinical/clinical_correlation_funnel.png", p)
 
     # use data_clinical, test the correlation between risk_score and ajcc_pathologic_stage (convert to factor)
     # cor <- cor.test(data_clinical$risk_score, data_clinical$ajcc_pathologic_stage %>%

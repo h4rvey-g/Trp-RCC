@@ -494,40 +494,59 @@ save_merged_h5ad <- function(qc_obj, output_file) {
 #' @param python_script_path The file path to the python integration script.
 #' @param input_h5ad The path to the H5AD file to be integrated.
 #' @param output_h5ad The path where the integrated H5AD file will be saved.
+#' @param host_project_root The root directory of the project on the host machine.
+#' @param host_venv_name The name of the Python virtual environment on the host machine.
+#' @param host_user The username for SSH access to the host machine.
+#' @param host_address The address of the host machine (e.g., "host.docker.internal").
 #' @return The path to the integrated H5AD file, for use in `targets`.
-run_scvi_integration <- function(python_script_path, input_h5ad, output_h5ad) {
-    message("--- Running scVI integration script ---")
+run_scvi_integration <- function(
+    python_script_path,
+    input_h5ad,
+    output_h5ad,
+    host_project_root,
+    host_venv_name,
+    # Add these new arguments
+    host_user,
+    host_address
+) {
+    # e.g., "host.docker.internal" or "172.17.0.1"
+    message("--- Offloading scVI integration to host machine via SSH ---")
 
-    # Define the path to the virtual environment
-    venv_path <- "./.venv_scvi"
+    host_script_path <- file.path(host_project_root, python_script_path)
+    host_input_path <- file.path(host_project_root, input_h5ad)
+    host_output_path <- file.path(host_project_root, output_h5ad)
+    
+    # Virtual environment is in project root
+    host_venv_path <- file.path(host_project_root, host_venv_name)
 
-    # Ensure the virtual environment and python script exist
-    if (!dir.exists(venv_path)) {
-        stop(paste("Python virtual environment not found at:", venv_path))
-    }
-    if (!file.exists(python_script_path)) {
-        stop(paste("Python script not found at:", python_script_path))
-    }
-    reticulate::use_virtualenv(venv_path, required = TRUE)
-
-    # Construct the command and execute it
-    message("Executing Python script for scVI integration...")
-    result <- system2(
-        "python",
-        args = c(shQuote(python_script_path), shQuote(input_h5ad), shQuote(output_h5ad)),
-        stdout = TRUE,
-        stderr = TRUE
+    # Construct the command to be run remotely using venv activation
+    remote_command <- sprintf(
+        "source %s/bin/activate && python %s %s %s",
+        shQuote(host_venv_path),
+        shQuote(host_script_path),
+        shQuote(host_input_path),
+        shQuote(host_output_path)
     )
 
-    # Check for errors during execution
+    # Construct the full SSH command, now with a dynamic target
+    full_ssh_command <- sprintf(
+        "ssh %s@%s 'cd %s && %s'",
+        host_user,
+        host_address,
+        shQuote(host_project_root),
+        remote_command
+    )
+
+    message("Executing remote command:")
+    message(full_ssh_command)
+
+    # Execute the command
+    result <- system(full_ssh_command, intern = TRUE, ignore.stderr = FALSE)
+
     status <- attr(result, "status")
     if (!is.null(status) && status != 0) {
-        stop("Python script execution failed. Error:\n", paste(result, collapse = "\n"))
-    } else {
-        message("Python script executed successfully.")
-        print(result)
+        stop("SSH command failed. Output:\n", paste(result, collapse = "\n"))
     }
 
-    # Return the output file path for the `targets` pipeline
     return(output_h5ad)
 }
